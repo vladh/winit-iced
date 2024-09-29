@@ -262,6 +262,7 @@ impl<T> EventLoop<T> {
     #[inline]
     #[cfg(not(all(web_platform, target_feature = "exception-handling")))]
     pub fn run_app<A: ApplicationHandler<T>>(self, app: &mut A) -> Result<(), EventLoopError> {
+        println!("winit/src/event_loop.rs#EventLoop::run_app()");
         self.event_loop.run(|event, event_loop| dispatch_event_for_app(app, event_loop, event))
     }
 
@@ -554,6 +555,7 @@ impl<T: 'static> EventLoopProxy<T> {
     ///
     /// [`UserEvent(event)`]: Event::UserEvent
     pub fn send_event(&self, event: T) -> Result<(), EventLoopClosed<T>> {
+        println!("winit/src/event_loop.rs#EventLoopProxy::send_event()");
         let _span = tracing::debug_span!("winit::EventLoopProxy::send_event",).entered();
 
         self.event_loop_proxy.send_event(event)

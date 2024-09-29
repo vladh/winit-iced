@@ -803,6 +803,7 @@ impl<T: 'static> EventLoop<T> {
     where
         F: FnMut(crate::event::Event<T>, &RootELW),
     {
+        println!("winit/src/platform_impl/linux/mod.rs#EventLoop::run()");
         self.run_on_demand(callback)
     }
 
@@ -810,6 +811,7 @@ impl<T: 'static> EventLoop<T> {
     where
         F: FnMut(crate::event::Event<T>, &RootELW),
     {
+        println!("winit/src/platform_impl/linux/mod.rs#EventLoop::run_on_demand()");
         x11_or_wayland!(match self; EventLoop(evlp) => evlp.run_on_demand(callback))
     }
 
@@ -839,6 +841,7 @@ impl<T> AsRawFd for EventLoop<T> {
 
 impl<T: 'static> EventLoopProxy<T> {
     pub fn send_event(&self, event: T) -> Result<(), EventLoopClosed<T>> {
+        println!("winit/src/platform_impl/linux/mod.rs#EventLoopProxy::send_event()");
         x11_or_wayland!(match self; EventLoopProxy(proxy) => proxy.send_event(event))
     }
 }

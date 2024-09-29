@@ -1,3 +1,7 @@
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(dead_code)]
+
 //! The event-loop routines.
 
 use std::cell::{Cell, RefCell};
@@ -40,6 +44,7 @@ type WaylandDispatcher = calloop::Dispatcher<'static, WaylandSource<WinitState>,
 
 /// The Wayland event loop.
 pub struct EventLoop<T: 'static> {
+    counter: i64,
     /// Has `run` or `run_on_demand` been called or a call to `pump_events` that starts the loop
     loop_running: bool,
 
@@ -98,11 +103,15 @@ impl<T: 'static> EventLoop<T> {
         let wayland_source = WaylandSource::new(connection.clone(), event_queue);
         let wayland_dispatcher =
             calloop::Dispatcher::new(wayland_source, |_, queue, winit_state: &mut WinitState| {
+                println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::new(): wayland_dispatcher callback called");
                 let result = queue.dispatch_pending(winit_state);
+                println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::new(): wayland_dispatcher, events_sink = {:?}", winit_state.events_sink);
+                println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::new(): wayland_dispatcher, result = {:?}", result);
                 if result.is_ok()
                     && (!winit_state.events_sink.is_empty()
                         || !winit_state.window_compositor_updates.is_empty())
                 {
+                    println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::new(): wayland_dispatcher, winit_state.dispatched_events = true");
                     winit_state.dispatched_events = true;
                 }
                 result
@@ -120,6 +129,7 @@ impl<T: 'static> EventLoop<T> {
         let result = event_loop
             .handle()
             .insert_source(user_events_channel, move |event, _, winit_state: &mut WinitState| {
+                println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::new(): user_events_channel callback called");
                 if let calloop::channel::Event::Msg(msg) = event {
                     winit_state.dispatched_events = true;
                     pending_user_events_clone.borrow_mut().push(msg);
@@ -138,6 +148,7 @@ impl<T: 'static> EventLoop<T> {
         let result = event_loop
             .handle()
             .insert_source(event_loop_awakener_source, move |_, _, winit_state: &mut WinitState| {
+                println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::new(): event_loop_awakener_source callback called");
                 // Mark that we have something to dispatch.
                 winit_state.dispatched_events = true;
             })
@@ -155,6 +166,7 @@ impl<T: 'static> EventLoop<T> {
         };
 
         let event_loop = Self {
+            counter: 0,
             loop_running: false,
             compositor_updates: Vec::new(),
             buffer_sink: EventSink::default(),
@@ -177,15 +189,21 @@ impl<T: 'static> EventLoop<T> {
     where
         F: FnMut(Event<T>, &RootActiveEventLoop),
     {
+        println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::run_on_demand() (counter {})", self.counter);
+        use std::backtrace::Backtrace;
         let exit = loop {
+            println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::run_on_demand(): loop iteration");
             match self.pump_events(None, &mut event_handler) {
                 PumpStatus::Exit(0) => {
+                    println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::run_on_demand(): loop PumpStatus::Exit(0)");
                     break Ok(());
                 },
                 PumpStatus::Exit(code) => {
+                    println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::run_on_demand(): loop PumpStatus::Exit({})", code);
                     break Err(EventLoopError::ExitFailure(code));
                 },
                 _ => {
+                    println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::run_on_demand(): loop continuing");
                     continue;
                 },
             }
@@ -204,8 +222,11 @@ impl<T: 'static> EventLoop<T> {
     where
         F: FnMut(Event<T>, &RootActiveEventLoop),
     {
+        use std::backtrace::Backtrace;
+        println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::pump_events(): (counter {})", self.counter);
         if !self.loop_running {
             self.loop_running = true;
+            println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::pump_events(): !self.loop_running");
 
             // Run the initial loop iteration.
             self.single_iteration(&mut callback, StartCause::Init);
@@ -214,6 +235,7 @@ impl<T: 'static> EventLoop<T> {
         // Consider the possibility that the `StartCause::Init` iteration could
         // request to Exit.
         if !self.exiting() {
+            println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::pump_events(): !self.exiting");
             self.poll_events_with_timeout(timeout, &mut callback);
         }
         if let Some(code) = self.exit_code() {
@@ -231,7 +253,16 @@ impl<T: 'static> EventLoop<T> {
     where
         F: FnMut(Event<T>, &RootActiveEventLoop),
     {
+        use std::backtrace::Backtrace;
+        // println!("\tpoll_events_with_timeout() {}", Backtrace::force_capture());
+        println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::poll_events_with_timeout()");
         let cause = loop {
+            println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::poll_events_with_timeout(): loop iteration");
+            println!("\tself.loop_running: {:?}", self.loop_running);
+            println!("\tself.buffer_sink: {:?}", self.buffer_sink);
+            println!("\tself.compositor_updates: {:?}", self.compositor_updates);
+            println!("\tself.window_ids: {:?}", self.window_ids);
+            // println!("\tself.pending_user_events: {:?}", self.pending_user_events);
             let start = Instant::now();
 
             timeout = {
@@ -252,10 +283,12 @@ impl<T: 'static> EventLoop<T> {
             // Checking for flush error is essential to perform an exit with error, since
             // once we have a protocol error, we could get stuck retrying...
             if self.connection.flush().is_err() {
+                println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::poll_events_with_timeout(): self.connection.flush().is_err()");
                 self.set_exit_code(1);
                 return;
             }
 
+            println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::poll_events_with_timeout(): will run self.loop_dispatch()");
             if let Err(error) = self.loop_dispatch(timeout) {
                 // NOTE We exit on errors from dispatches, since if we've got protocol error
                 // libwayland-client/wayland-rs will inform us anyway, but crashing downstream is
@@ -264,17 +297,26 @@ impl<T: 'static> EventLoop<T> {
                 // terminated, but winit doesn't provide us with an API to do that
                 // via some event. Still, we set the exit code to the error's OS
                 // error code, or to 1 if not possible.
+                println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::poll_events_with_timeout(): self.loop_dispatch() returned err");
                 let exit_code = error.raw_os_error().unwrap_or(1);
                 self.set_exit_code(exit_code);
                 return;
             }
+            println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::poll_events_with_timeout(): self.loop_dispatch() done");
 
             // NB: `StartCause::Init` is handled as a special case and doesn't need
             // to be considered here
             let cause = match self.control_flow() {
-                ControlFlow::Poll => StartCause::Poll,
-                ControlFlow::Wait => StartCause::WaitCancelled { start, requested_resume: None },
+                ControlFlow::Poll => {
+                    println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::poll_events_with_timeout(): cause = ControlFlow::Poll");
+                    StartCause::Poll
+                },
+                ControlFlow::Wait => {
+                    println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::poll_events_with_timeout(): cause = ControlFlow::Wait");
+                    StartCause::WaitCancelled { start, requested_resume: None }
+                },
                 ControlFlow::WaitUntil(deadline) => {
+                    println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::poll_events_with_timeout(): cause = ControlFlow::WaitUntil");
                     if Instant::now() < deadline {
                         StartCause::WaitCancelled { start, requested_resume: Some(deadline) }
                     } else {
@@ -284,13 +326,18 @@ impl<T: 'static> EventLoop<T> {
             };
 
             // Reduce spurious wake-ups.
+            println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::poll_events_with_timeout(): let dispatched_events = self.with_state(|state| state.dispatched_events);");
             let dispatched_events = self.with_state(|state| state.dispatched_events);
-            if matches!(cause, StartCause::WaitCancelled { .. }) && !dispatched_events {
+            println!("(matches!(cause, StartCause::WaitCancelled ..) = {}) (!dispatched_events = {})", matches!(cause, StartCause::WaitCancelled { .. }), !dispatched_events);
+            if !dispatched_events {
+                println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::poll_events_with_timeout(): !dispatched_events, looping again");
                 continue;
             }
+            println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::poll_events_with_timeout(): dispatched_events, loop done");
 
             break cause;
         };
+        println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::poll_events_with_timeout(): loop ended");
 
         self.single_iteration(&mut callback, cause);
     }
@@ -320,15 +367,18 @@ impl<T: 'static> EventLoop<T> {
         // Handle pending user events. We don't need back buffer, since we can't dispatch
         // user events indirectly via callback to the user.
         for user_event in self.pending_user_events.borrow_mut().drain(..) {
+            println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::single_iteration(): user_event iteration");
             callback(Event::UserEvent(user_event), &self.window_target);
         }
 
         // Drain the pending compositor updates.
+        println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::single_iteration(): self.with_state(|state| compositor_updates.append(&mut state.window_compositor_updates));");
         self.with_state(|state| compositor_updates.append(&mut state.window_compositor_updates));
 
         for mut compositor_update in compositor_updates.drain(..) {
             let window_id = compositor_update.window_id;
             if compositor_update.scale_changed {
+                println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::single_iteration(): let (physical_size, scale_factor) = self.with_state(|state| ...)");
                 let (physical_size, scale_factor) = self.with_state(|state| {
                     let windows = state.windows.get_mut();
                     let window = windows.get(&window_id).unwrap().lock().unwrap();
@@ -359,6 +409,7 @@ impl<T: 'static> EventLoop<T> {
 
                 // Resize the window when user altered the size.
                 if old_physical_size != physical_size {
+                    println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::single_iteration(): old_physical_size != physical_size");
                     self.with_state(|state| {
                         let windows = state.windows.get_mut();
                         let mut window = windows.get(&window_id).unwrap().lock().unwrap();
@@ -376,6 +427,7 @@ impl<T: 'static> EventLoop<T> {
             // NOTE: Rescale changed the physical size which winit operates in, thus we should
             // resize.
             if compositor_update.resized || compositor_update.scale_changed {
+                println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::single_iteration(): compositor_update.resized || compositor_update.scale_changed");
                 let physical_size = self.with_state(|state| {
                     let windows = state.windows.get_mut();
                     let window = windows.get(&window_id).unwrap().lock().unwrap();
@@ -416,6 +468,7 @@ impl<T: 'static> EventLoop<T> {
         }
 
         // Push the events directly from the window.
+        println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::single_iteration(): “Push the events directly from the window.”");
         self.with_state(|state| {
             buffer_sink.append(&mut state.window_events_sink.lock().unwrap());
         });
@@ -425,6 +478,7 @@ impl<T: 'static> EventLoop<T> {
         }
 
         // Handle non-synthetic events.
+        println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::single_iteration(): “Handle non-synthetic events.”");
         self.with_state(|state| {
             buffer_sink.append(&mut state.events_sink);
         });
@@ -434,11 +488,13 @@ impl<T: 'static> EventLoop<T> {
         }
 
         // Collect the window ids
+        println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::single_iteration(): “Collect the window ids”");
         self.with_state(|state| {
             window_ids.extend(state.window_requests.get_mut().keys());
         });
 
         for window_id in window_ids.iter() {
+            println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::single_iteration(): looping for window_id in window_ids.iter()");
             let event = self.with_state(|state| {
                 let window_requests = state.window_requests.get_mut();
                 if window_requests.get(window_id).unwrap().take_closed() {
@@ -466,6 +522,7 @@ impl<T: 'static> EventLoop<T> {
             });
 
             if let Some(event) = event {
+                println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::single_iteration(): if let Some(event) = event");
                 callback(
                     Event::WindowEvent { window_id: crate::window::WindowId(*window_id), event },
                     &self.window_target,
@@ -474,6 +531,7 @@ impl<T: 'static> EventLoop<T> {
         }
 
         // Reset the hint that we've dispatched events.
+        println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::single_iteration(): “Reset the hint that we've dispatched events.”");
         self.with_state(|state| {
             state.dispatched_events = false;
         });
@@ -484,6 +542,7 @@ impl<T: 'static> EventLoop<T> {
         // Update the window frames and schedule redraws.
         let mut wake_up = false;
         for window_id in window_ids.drain(..) {
+            println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::single_iteration(): “Update the window frames and schedule redraws.”");
             wake_up |= self.with_state(|state| match state.windows.get_mut().get_mut(&window_id) {
                 Some(window) => {
                     let refresh = window.lock().unwrap().refresh_frame();
@@ -510,6 +569,7 @@ impl<T: 'static> EventLoop<T> {
         if wake_up {
             match &self.window_target.p {
                 PlatformActiveEventLoop::Wayland(window_target) => {
+                    println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::single_iteration(): window_target.event_loop_awakener.ping();");
                     window_target.event_loop_awakener.ping();
                 },
                 #[cfg(x11_platform)]
@@ -533,6 +593,7 @@ impl<T: 'static> EventLoop<T> {
     }
 
     fn with_state<'a, U: 'a, F: FnOnce(&'a mut WinitState) -> U>(&'a mut self, callback: F) -> U {
+        println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::with_state()");
         let state = match &mut self.window_target.p {
             PlatformActiveEventLoop::Wayland(window_target) => window_target.state.get_mut(),
             #[cfg(x11_platform)]
@@ -542,20 +603,28 @@ impl<T: 'static> EventLoop<T> {
         callback(state)
     }
 
-    fn loop_dispatch<D: Into<Option<std::time::Duration>>>(&mut self, timeout: D) -> IOResult<()> {
+    fn loop_dispatch<D: Into<Option<std::time::Duration>> + std::fmt::Debug>(&mut self, timeout: D) -> IOResult<()> {
+        use std::backtrace::Backtrace;
+        // println!("loop_dispatch() {} {}", self.counter, Backtrace::force_capture());
+        println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::loop_dispatch(): (counter {})", self.counter);
+        self.counter += 1;
         let state = match &mut self.window_target.p {
             PlatformActiveEventLoop::Wayland(window_target) => window_target.state.get_mut(),
             #[cfg(feature = "x11")]
             _ => unreachable!(),
         };
 
-        self.event_loop.dispatch(timeout, state).map_err(|error| {
-            tracing::error!("Error dispatching event loop: {}", error);
+        println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::loop_dispatch(): self.event_loop.dispatch(timeout, state)");
+        let thing = self.event_loop.dispatch(timeout, state).map_err(|error| {
+            println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::loop_dispatch(): error dispatching event loop (error {})", error);
             error.into()
-        })
+        });
+        println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::loop_dispatch(): self.event_loop.dispatch() returned (ret {:?})", thing);
+        thing
     }
 
     fn roundtrip(&mut self) -> Result<usize, RootOsError> {
+        println!("winit/src/platform_impl/linux/wayland/event_loop/mod.rs#EventLoop::roundtrip()");
         let state = match &mut self.window_target.p {
             PlatformActiveEventLoop::Wayland(window_target) => window_target.state.get_mut(),
             #[cfg(feature = "x11")]

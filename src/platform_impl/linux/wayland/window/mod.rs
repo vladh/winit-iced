@@ -205,6 +205,7 @@ impl Window {
         }
 
         // Wake-up event loop, so it'll send initial redraw requested.
+        println!("winit/src/platform_impl/linux/wayland/window/mod.rs#Window::new(): event_loop_awakener.ping();");
         let event_loop_awakener = event_loop_window_target.event_loop_awakener.clone();
         event_loop_awakener.ping();
 
@@ -281,6 +282,7 @@ impl Window {
             .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
             .is_ok()
         {
+            println!("winit/src/platform_impl/linux/wayland/window/mod.rs#Window::request_redraw(): is_ok()");
             self.event_loop_awakener.ping();
         }
     }
@@ -597,6 +599,7 @@ impl Window {
         if window_state.ime_allowed() != allowed && window_state.set_ime_allowed(allowed) {
             let event = WindowEvent::Ime(if allowed { Ime::Enabled } else { Ime::Disabled });
             self.window_events_sink.lock().unwrap().push_window_event(event, self.window_id);
+            println!("winit/src/platform_impl/linux/wayland/window/mod.rs#Window::set_ime_allowed(): self.event_loop_awakener.ping();");
             self.event_loop_awakener.ping();
         }
     }
@@ -699,6 +702,7 @@ impl Window {
 impl Drop for Window {
     fn drop(&mut self) {
         self.window_requests.closed.store(true, Ordering::Relaxed);
+        println!("winit/src/platform_impl/linux/wayland/window/mod.rs#Window::drop(): self.event_loop_awakener.ping();");
         self.event_loop_awakener.ping();
     }
 }
